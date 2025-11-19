@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Patch script for Adobe DNG SDK filename bug
-# This fixes a bug in dng_file_stream.cpp where 'filename' is undefined
+# This fixes a bug in dng_file_stream.cpp where variable names are incorrect
 
 DNG_FILE="app/src/main/cpp/dng_sdk/dng_file_stream.cpp"
 
@@ -13,18 +13,25 @@ fi
 
 echo "Patching dng_file_stream.cpp for Android compatibility..."
 
-# Check if already patched
-if grep -q "name.Get()" "$DNG_FILE"; then
-    echo "File appears to already be patched. Skipping."
-    exit 0
+# Restore from backup if it exists (in case we need to re-patch)
+if [ -f "$DNG_FILE.orig" ]; then
+    cp "$DNG_FILE.orig" "$DNG_FILE"
+else
+    # Create original backup (only once)
+    cp "$DNG_FILE" "$DNG_FILE.orig"
 fi
 
-# Create backup
-cp "$DNG_FILE" "$DNG_FILE.backup"
+# Apply patches for different line patterns
+# The bug: Adobe uses 'filename' or 'name' but the actual parameter is different
 
-# Apply patch using sed
-# The bug is that 'filename' is used but should be 'name.Get()'
-sed -i 's/filename);$/name.Get());/g' "$DNG_FILE"
+# Pattern 1: Replace 'name.Get()' with 'fName.Get()' (most common)
+sed -i 's/name\.Get());$/fName.Get());/g' "$DNG_FILE"
+
+# Pattern 2: Replace standalone 'filename' with 'fName.Get()'
+sed -i 's/filename);$/fName.Get());/g' "$DNG_FILE"
+
+# Pattern 3: Replace standalone 'name' with 'fName.Get()'
+sed -i 's/([^a-zA-Z_])name);$/\1fName.Get());/g' "$DNG_FILE"
 
 echo "✓ Patched successfully!"
-echo "Backup saved to: $DNG_FILE.backup"
+echo "Original saved to: $DNG_FILE.orig"
