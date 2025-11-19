@@ -43,6 +43,7 @@ if(DNG_SDK_SOURCES)
     target_compile_definitions(dng_sdk PRIVATE
         qDNGUseLibJPEG=1
         qDNGUseXMP=0
+        qDNGUseJXL=0
         qDNGThreadSafe=1
         qDNGValidateTarget=1
         qAndroid=1
@@ -75,6 +76,7 @@ endif()
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     qDNGUseLibJPEG=1
     qDNGUseXMP=0
+    qDNGUseJXL=0
     qDNGThreadSafe=1
     qDNGValidateTarget=1
     qAndroid=1
