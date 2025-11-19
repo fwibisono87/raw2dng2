@@ -1,0 +1,74 @@
+This directory should contain the Adobe DNG SDK source files.
+
+Please download the Adobe DNG SDK and place the source files here before building.
+
+Required files (example from DNG SDK 1.6):
+- dng_1d_function.cpp/h
+- dng_1d_table.cpp/h
+- dng_abort_sniffer.cpp/h
+- dng_area_task.cpp/h
+- dng_bad_pixels.cpp/h
+- dng_bottlenecks.cpp/h
+- dng_camera_profile.cpp/h
+- dng_color_space.cpp/h
+- dng_color_spec.cpp/h
+- dng_date_time.cpp/h
+- dng_exceptions.cpp/h
+- dng_exif.cpp/h
+- dng_file_stream.cpp/h
+- dng_filter_task.cpp/h
+- dng_fingerprint.cpp/h
+- dng_gain_map.cpp/h
+- dng_globals.cpp/h
+- dng_host.cpp/h
+- dng_hue_sat_map.cpp/h
+- dng_ifd.cpp/h
+- dng_image.cpp/h
+- dng_image_writer.cpp/h
+- dng_info.cpp/h
+- dng_iptc.cpp/h
+- dng_jpeg_image.cpp/h
+- dng_jpeg_memory_source.cpp/h
+- dng_lens_correction.cpp/h
+- dng_linearization_info.cpp/h
+- dng_lossless_jpeg.cpp/h
+- dng_matrix.cpp/h
+- dng_memory.cpp/h
+- dng_memory_stream.cpp/h
+- dng_misc_opcodes.cpp/h
+- dng_mosaic_info.cpp/h
+- dng_mutex.cpp/h
+- dng_negative.cpp/h
+- dng_opcode_list.cpp/h
+- dng_opcodes.cpp/h
+- dng_orientation.cpp/h
+- dng_parse_utils.cpp/h
+- dng_pixel_buffer.cpp/h
+- dng_point.cpp/h
+- dng_preview.cpp/h
+- dng_pthread.cpp/h
+- dng_rational.cpp/h
+- dng_read_image.cpp/h
+- dng_rect.cpp/h
+- dng_ref_counted_block.cpp/h
+- dng_reference.cpp/h
+- dng_render.cpp/h
+- dng_resample.cpp/h
+- dng_safe_arithmetic.cpp/h
+- dng_shared.cpp/h
+- dng_simple_image.cpp/h
+- dng_spline.cpp/h
+- dng_stream.cpp/h
+- dng_string.cpp/h
+- dng_string_list.cpp/h
+- dng_tag_types.cpp/h
+- dng_tag_values.cpp/h
+- dng_temperature.cpp/h
+- dng_tile_iterator.cpp/h
+- dng_tone_curve.cpp/h
+- dng_utils.cpp/h
+- dng_xy_coord.cpp/h
+- dng_xmp.cpp/h
+- dng_xmp_sdk.cpp/h
+
+And many more files depending on the SDK version.

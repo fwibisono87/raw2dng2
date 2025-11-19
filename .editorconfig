@@ -1,0 +1,31 @@
+# EditorConfig for consistent coding styles
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_size = 4
+indent_style = space
+
+[*.{xml,xml.dist}]
+indent_size = 4
+indent_style = space
+
+[*.{gradle,gradle.kts}]
+indent_size = 4
+indent_style = space
+
+[*.{cpp,h}]
+indent_size = 4
+indent_style = space
+
+[*.{json,yml,yaml}]
+indent_size = 2
+indent_style = space
+
+[*.md]
+trim_trailing_whitespace = false

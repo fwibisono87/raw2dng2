@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Raw2DNG</string>
+    <string name="select_files">Select RAW Files</string>
+    <string name="convert">Convert to DNG</string>
+    <string name="status">Status:</string>
+    <string name="idle">Idle</string>
+    <string name="converting">Converting %1$d of %2$d</string>
+    <string name="completed">Completed: %1$d files</string>
+    <string name="error">Error: %1$s</string>
+    <string name="select_raw_files">Select RAW files (CR2, ARW, etc.)</string>
+    <string name="no_files_selected">No files selected</string>
+    <string name="files_selected">%1$d file(s) selected</string>
+</resources>
