@@ -143,4 +143,4 @@ if [ "$cygwin" = "true" -o "$msys" = "true" ] ; then
     eval `echo $OURS_ARGS | sed -e 's|\\\\|/|g' -e 's|C:|/cygdrive/c|g' -e 's|cmd /c|cygpath --windows|g' `
 fi
 
-exec "$JAVACMD" "$@"
+exec "$JAVACMD" $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "-Dorg.gradle.appname=$APP_BASE_NAME" -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
