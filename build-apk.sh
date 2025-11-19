@@ -28,6 +28,14 @@ DNG_SDK_DIR="app/src/main/cpp/dng_sdk"
 DNG_SDK_FILES=$(find "$DNG_SDK_DIR" -name "dng_*.cpp" 2>/dev/null | wc -l)
 
 echo "Checking Adobe DNG SDK..."
+
+# Apply patches if needed
+if [ -f "patch-dng-sdk.sh" ] && [ "$DNG_SDK_FILES" -gt 0 ]; then
+    echo "Applying DNG SDK patches..."
+    ./patch-dng-sdk.sh || echo -e "${YELLOW}Warning: Patch script failed, continuing anyway${NC}"
+    echo ""
+fi
+
 if [ "$DNG_SDK_FILES" -eq 0 ]; then
     echo -e "${YELLOW}WARNING: Adobe DNG SDK not found!${NC}"
     echo "The app will build but only create placeholder DNG files."
