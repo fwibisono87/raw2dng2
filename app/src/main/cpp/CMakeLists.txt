@@ -8,6 +8,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti -fexceptions -Wno-deprecated-decl
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/dng_sdk)
+include_directories(${CMAKE_SOURCE_DIR})  # For JXL stub headers
 include_directories(${ANDROID_NDK}/sources/android/support/include)
 
 # Collect all DNG SDK source files
