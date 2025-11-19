@@ -1,0 +1,17 @@
+# Don't include these in Docker build context
+.git
+.gitignore
+.idea
+*.iml
+*.md
+output/
+build/
+.gradle/
+app/build/
+app/.cxx/
+local.properties
+
+# Keep these
+!README.md
+!SETUP_INSTRUCTIONS.md
+!DOCKER_BUILD.md

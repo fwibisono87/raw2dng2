@@ -29,3 +29,12 @@ build/
 .loadpath
 .project
 .classpath
+
+# Output directory for APKs
+output/
+
+# DNG SDK files (must be downloaded separately)
+app/src/main/cpp/dng_sdk/*.cpp
+app/src/main/cpp/dng_sdk/*.h
+!app/src/main/cpp/dng_sdk/README.md
+!app/src/main/cpp/dng_sdk/dng_sdk_placeholder.txt

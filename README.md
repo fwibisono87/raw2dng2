@@ -10,10 +10,51 @@ A proof-of-concept Android application that converts proprietary RAW files (CR2,
 - ✅ Support for various RAW formats (CR2, ARW, NEF, RAF, ORF, etc.)
 - ✅ Native C++ implementation using Adobe DNG SDK
 - ✅ Simple, functional UI for proof-of-concept testing
+- ✅ Docker-based build system (no Android Studio required!)
+
+## Quick Start with Docker 🐳
+
+**Don't have Android Studio?** Use Docker to build the APK with zero setup!
+
+```bash
+# 1. Install Docker (if not already installed)
+# See: https://docs.docker.com/get-docker/
+
+# 2. Clone the repository
+git clone <repo-url>
+cd raw2dng2
+
+# 3. (Optional) Add Adobe DNG SDK for real conversion
+# Download from: https://helpx.adobe.com/camera-raw/digital-negative.html
+# Then: cp /path/to/dng_sdk/source/*.{cpp,h} app/src/main/cpp/dng_sdk/
+
+# 4. Build the APK (one command!)
+make build
+# or: ./docker-build.sh
+
+# 5. Your APK is ready!
+ls output/app-debug.apk
+```
+
+**That's it!** No Android Studio, no SDK setup, just Docker and you're done.
+
+For detailed Docker instructions, see **[DOCKER_BUILD.md](DOCKER_BUILD.md)**.
+
+---
 
 ## Prerequisites
 
-### Development Environment
+**Choose your build method:**
+
+- **Option A: Docker Build** (Recommended - No Android tools needed!)
+  - Only requires: Docker and Docker Compose
+  - See: [DOCKER_BUILD.md](DOCKER_BUILD.md)
+
+- **Option B: Android Studio Build** (For Android developers)
+  - Requires: Android Studio, NDK, CMake
+  - See instructions below
+
+### Option B: Development Environment (Android Studio)
 
 1. **Android Studio** (Arctic Fox or newer)
    - Download from: https://developer.android.com/studio

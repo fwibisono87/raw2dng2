@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  android-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: raw2dng-builder
+    volumes:
+      # Mount the entire project directory
+      - .:/workspace
+      # Mount output directory for APK
+      - ./output:/workspace/output
+      # Optional: Cache Gradle dependencies for faster rebuilds
+      - gradle-cache:/root/.gradle
+    environment:
+      # Gradle options
+      - GRADLE_OPTS=-Xmx4096m -Dorg.gradle.daemon=false
+      # Android SDK paths
+      - ANDROID_HOME=/opt/android-sdk
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+    working_dir: /workspace
+    # Override command if needed
+    # command: ./build-apk.sh
+
+volumes:
+  gradle-cache:
+    driver: local
