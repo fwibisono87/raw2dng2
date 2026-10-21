@@ -11,6 +11,7 @@ data class QueueItem(
     val name: String,
     var make: String = "",
     var model: String = "",
+    var mimeType: String? = null,
     var error: String? = null,
     var status: String = "Pending",
     var hasEmbedded: Boolean = false,

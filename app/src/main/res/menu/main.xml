@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menuClearQueue"
+        android:title="@string/menu_clear_queue"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/menuAbout"
+        android:title="@string/menu_about"
+        android:showAsAction="never" />
+</menu>

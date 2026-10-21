@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/settingsHeader"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/formatSectionTitle"
+        style="@style/SectionTitle"
+        android:text="@string/output_format" />
+
+    <RadioGroup
+        android:id="@+id/formatGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/formatDng"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/format_dng" />
+
+        <RadioButton
+            android:id="@+id/formatJpeg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:text="@string/format_jpeg" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:id="@+id/dngOptions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <CheckBox
+            android:id="@+id/embedOriginal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/embed_original" />
+
+        <TextView
+            android:id="@+id/embedHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="32dp"
+            android:layout_marginTop="-2dp"
+            android:paddingBottom="4dp"
+            android:text="@string/embed_original_hint"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/jpegOptions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView style="@style/FieldLabel" android:text="@string/source" />
+        <Spinner
+            android:id="@+id/sourceSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:entries="@array/jpeg_sources" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:paddingBottom="4dp"
+            android:text="@string/jpeg_source_hint"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView style="@style/FieldLabel" android:text="@string/long_edge" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <Spinner
+                android:id="@+id/sizeSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:entries="@array/long_edge_sizes" />
+            <LinearLayout
+                android:id="@+id/customSizeRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <EditText
+                    android:id="@+id/customSize"
+                    android:layout_width="72dp"
+                    android:layout_height="48dp"
+                    android:hint="@string/pixels"
+                    android:inputType="number"
+                    android:importantForAutofill="no"
+                    android:selectAllOnFocus="true"
+                    android:singleLine="true" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp" android:text="@string/px" android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView style="@style/FieldLabel" android:text="@string/max_file_size" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <Spinner
+                android:id="@+id/maxSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:entries="@array/max_file_sizes" />
+            <LinearLayout
+                android:id="@+id/customMaxRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+                <EditText
+                    android:id="@+id/customMax"
+                    android:layout_width="72dp"
+                    android:layout_height="48dp"
+                    android:hint="@string/kilobytes"
+                    android:inputType="number"
+                    android:importantForAutofill="no"
+                    android:selectAllOnFocus="true"
+                    android:singleLine="true" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp" android:text="@string/kb" android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/qualityLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="14sp" />
+        <SeekBar
+            android:id="@+id/qualitySeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="40" />
+    </LinearLayout>
+
+    <TextView
+        style="@style/SectionTitle"
+        android:text="@string/save_to" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/folderLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="middle"
+            android:singleLine="true"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/changeFolderButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:text="@string/change"
+            android:textColor="?android:attr/colorAccent" />
+
+        <Button
+            android:id="@+id/useDefaultFolderButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:text="@string/use_default"
+            android:textColor="?android:attr/colorAccent"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/filesSectionTitle"
+        style="@style/SectionTitle"
+        android:text="@string/files_count_zero" />
+
+    <LinearLayout
+        android:id="@+id/emptyState"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="36dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="36dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/no_raw_files_yet"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="16sp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/empty_queue_hint"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="14sp" />
+    </LinearLayout>
+</LinearLayout>

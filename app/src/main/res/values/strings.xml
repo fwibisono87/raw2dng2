@@ -1,8 +1,80 @@
 <resources>
     <string name="app_name">Raw2DNG</string>
     <color name="launcher_background">#145A64</color>
+    <string name="output_format">Output format</string>
+    <string name="format_dng">DNG</string>
+    <string name="format_jpeg">JPEG</string>
     <string name="embed_original">Embed original RAW file</string>
-    <string name="camera_model">%1$s %2$s</string>
-    <string name="camera_preview">Camera JPEG preview</string>
+    <string name="embed_original_hint">Larger files; lets you extract the original later.</string>
+    <string name="source">Source</string>
+    <string name="jpeg_source_hint">Uses the camera photo when it is large enough; develops from RAW otherwise. Tap a file to choose per photo.</string>
+    <string name="long_edge">Long edge</string>
+    <string name="max_file_size">Maximum file size</string>
+    <string name="pixels">Pixels</string>
+    <string name="numeric_value">%d</string>
+    <string name="px">px</string>
+    <string name="kilobytes">KB</string>
+    <string name="kb">KB</string>
+    <string name="save_to">Save to</string>
+    <string name="change">Change</string>
+    <string name="use_default">Use default</string>
+    <string name="files_count_zero">Files · 0</string>
+    <string name="files_count">Files · %1$d</string>
+    <string name="quality_value">Quality · %1$d</string>
+    <string name="no_raw_files_yet">No RAW files yet</string>
+    <string name="empty_queue_hint">Add files below, or share RAW photos to Raw2DNG from your gallery or file manager.</string>
+    <string name="add_raw_files">Add RAW files</string>
+    <string name="add_files">Add files</string>
+    <string name="convert_files">Convert files</string>
+    <string name="cancel">Cancel</string>
+    <string name="choose_folder_to_convert">Choose an output folder to enable conversion.</string>
+    <string name="menu_clear_queue">Clear queue</string>
+    <string name="menu_about">About</string>
+    <string name="remove_file">Remove</string>
+    <string name="photo_thumbnail">RAW photo thumbnail</string>
+    <string name="unsupported_extension">Skipped unsupported: %1$s</string>
+    <string name="not_set_choose_folder">Not set — choose a folder</string>
+    <string name="default_output_folder">Pictures/Raw2DNG</string>
+    <string name="folder_photo">Photo %1$s</string>
+    <string name="photo_without_id">Photo</string>
+    <string name="internal_storage">Internal storage</string>
+    <string name="sd_card">SD card</string>
+    <string name="sd_card_path">SD card/%1$s</string>
+    <string name="selected_folder">Selected folder</string>
+    <string name="dialog_close">Close</string>
+    <string name="use_camera_jpeg">Use camera JPEG</string>
+    <string name="develop_from_raw">Develop from RAW</string>
+    <string name="preview_loading">Loading camera preview…</string>
+    <string name="no_embedded_jpeg">No embedded camera JPEG. JPEG output will be developed from the RAW data.</string>
+    <string name="could_not_inspect_raw">Could not inspect this RAW file: %1$s</string>
+    <string name="camera_jpeg_preview">Camera JPEG preview</string>
     <string name="embedded_preview_unavailable">Embedded preview unavailable</string>
+    <string name="converting_label">Converting %1$d of %2$d · %3$s</string>
+    <string name="converting">Converting…</string>
+    <string name="conversion_summary">%1$s converted, %2$s failed · saved to %3$s</string>
+    <string name="cancelled_summary">Cancelled · %1$s converted, %2$s failed · saved to %3$s</string>
+    <string name="about_text">Raw2DNG 0.1.0\n\nThe app is MIT licensed.\nUses rawler (dnglab), LGPL-2.1.\n\nrawler source: https://github.com/dnglab/dnglab\nProject source (placeholder): https://github.com/PLACEHOLDER/raw2dng</string>
+    <string name="about_title">About Raw2DNG</string>
+    <plurals name="convert_count">
+        <item quantity="one">Convert %d file</item>
+        <item quantity="other">Convert %d files</item>
+    </plurals>
+    <string-array name="jpeg_sources">
+        <item>Camera JPEG if large enough</item>
+        <item>Always develop from RAW</item>
+    </string-array>
+    <string-array name="long_edge_sizes">
+        <item>Original size</item>
+        <item>1080 px</item>
+        <item>2048 px</item>
+        <item>3840 px</item>
+        <item>Custom…</item>
+    </string-array>
+    <string-array name="max_file_sizes">
+        <item>No limit</item>
+        <item>500 KB</item>
+        <item>1 MB</item>
+        <item>2 MB</item>
+        <item>Custom…</item>
+    </string-array>
 </resources>
