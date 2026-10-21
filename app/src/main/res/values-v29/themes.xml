@@ -3,5 +3,9 @@
         <item name="android:colorAccent">#00A99D</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <!-- DayNight leaves the system bar icons white; make them dark on the light theme.
+             values-night-v29 turns this back off. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>

@@ -542,10 +542,10 @@ class MainActivity : Activity() {
         val builder = AlertDialog.Builder(this)
             .setTitle(item.name)
             .setView(content)
-            .setNegativeButton(R.string.dialog_close, null)
+            .setPositiveButton(R.string.dialog_close, null)
         val jpegMode = selectedFormat() == FORMAT_JPEG
         if (jpegMode) {
-            builder.setPositiveButton(R.string.develop_from_raw) { _, _ ->
+            builder.setNegativeButton(R.string.develop_from_raw) { _, _ ->
                 item.sourceOverride = SOURCE_DEVELOP
                 item.status = "Pending · develop from RAW"
                 refreshQueueUi()
@@ -569,6 +569,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (dialog.isShowing && bitmap != null) {
                         preview.setImageBitmap(bitmap)
+                        preview.background = null
                         message.text = getString(R.string.camera_jpeg_preview)
                     } else if (dialog.isShowing) {
                         message.text = getString(R.string.embedded_preview_unavailable)
@@ -876,6 +877,9 @@ class MainActivity : Activity() {
                 setTextColor(statusColor(item.status))
             }
             row.findViewById<ImageButton>(R.id.removeButton).apply {
+                // ImageButton makes itself focusable in its constructor, overriding XML; a focusable
+                // child stops ListView from delivering row taps (preview dialog, long-press remove).
+                isFocusable = false
                 visibility = if (running) View.GONE else View.VISIBLE
                 setOnClickListener { removeItem(item) }
             }
