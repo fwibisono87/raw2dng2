@@ -24,6 +24,11 @@ val releaseStoreFile = providers.gradleProperty("release.storeFile")
 val releaseStorePassword = providers.gradleProperty("release.storePassword")
 val releaseKeyAlias = providers.gradleProperty("release.keyAlias")
 val releaseKeyPassword = providers.gradleProperty("release.keyPassword")
+val release = Properties().apply { file("version.properties").inputStream().use { load(it) } }
+val appVersionName: String = release.getProperty("versionName")
+val appVersionCode = appVersionName.split('.').map(String::toInt)
+    .also { require(it.size == 3) { "versionName must look like 1.2.3, got $appVersionName" } }
+    .let { (major, minor, patch) -> major * 10000 + minor * 100 + patch }
 
 val sdkPath = providers.provider {
     val properties = Properties()
@@ -106,16 +111,11 @@ android {
         applicationId = "com.raw2dng"
         minSdk = 21
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        resValue("string", "release_codename", release.getProperty("codename"))
+        resValue("string", "release_codename_url", release.getProperty("codenameUrl").orEmpty())
         ndk { abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64") }
-    }
-
-    signingConfigs.getByName("debug").apply {
-        storeFile = layout.buildDirectory.file("debug.keystore").get().asFile
-        storePassword = "android"
-        keyAlias = "androiddebugkey"
-        keyPassword = "android"
     }
 
     if (releaseStoreFile.isPresent) {
@@ -143,6 +143,8 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
+    buildFeatures { resValues = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

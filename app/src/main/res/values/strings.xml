@@ -53,7 +53,8 @@
     <string name="converting">Converting…</string>
     <string name="conversion_summary">%1$s converted, %2$s failed · saved to %3$s</string>
     <string name="cancelled_summary">Cancelled · %1$s converted, %2$s failed · saved to %3$s</string>
-    <string name="about_text">Raw2DNG 0.1.0\n\nThe app is MIT licensed.\nUses rawler (dnglab), LGPL-2.1.\n\nrawler source: https://github.com/dnglab/dnglab\nProject source (placeholder): https://github.com/PLACEHOLDER/raw2dng</string>
+    <!-- %1$s version, %2$s codename (already linked or escaped) -->
+    <string name="about_text"><![CDATA[<b>Raw2DNG %1$s</b> “%2$s”<br><br>The app is MIT licensed.<br>Uses rawler (dnglab), LGPL-2.1.<br><br>rawler source: <a href="https://github.com/dnglab/dnglab">github.com/dnglab/dnglab</a><br>Project source: <a href="https://github.com/fwibisono87/raw2dng2">github.com/fwibisono87/raw2dng2</a>]]></string>
     <string name="about_title">About Raw2DNG</string>
     <string name="jpeg_develop_hint">Develops every photo from the RAW data. Slower and uses more memory than the camera JPEG.</string>
     <string name="clear_list">Clear list</string>

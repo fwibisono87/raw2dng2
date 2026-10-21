@@ -15,7 +15,6 @@ import android.os.Bundle
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.text.TextUtils
-import android.text.util.Linkify
 import android.util.Log
 import android.util.LruCache
 import android.util.TypedValue
@@ -768,9 +767,15 @@ class MainActivity : Activity() {
 
     private fun showAbout() {
         val view = TextView(this).apply {
-            text = getString(R.string.about_text)
+            @Suppress("DEPRECATION")
+            val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty()
+            val codename = TextUtils.htmlEncode(getString(R.string.release_codename))
+            val codenameUrl = getString(R.string.release_codename_url)
+            val linkedCodename = if (codenameUrl.isBlank()) codename else "<a href=\"${TextUtils.htmlEncode(codenameUrl)}\">$codename</a>"
+            @Suppress("DEPRECATION")
+            text = android.text.Html.fromHtml(getString(R.string.about_text, version, linkedCodename))
+            movementMethod = android.text.method.LinkMovementMethod.getInstance()
             setPadding(dp(24), dp(12), dp(24), dp(8))
-            autoLinkMask = Linkify.WEB_URLS
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.about_title)
