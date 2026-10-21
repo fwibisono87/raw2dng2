@@ -1,0 +1,7 @@
+Raw2DNG bundles the rawler Rust library, version 0.8.0, from the dnglab
+project. rawler is distributed under the GNU Lesser General Public License,
+version 2.1 (LGPL-2.1). The library source and license are available from
+https://github.com/dnglab/dnglab .
+
+The Android application code in this repository is distributed under the MIT
+License; see LICENSE.
