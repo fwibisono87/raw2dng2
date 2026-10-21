@@ -98,7 +98,10 @@ jobs:
 
       - name: Build
         run: |
-          export CARGO="$(rustup which cargo)"
+          # Call the toolchain binaries directly. Going through rustup's proxies lets the
+          # parallel per-ABI cargo builds race each other installing components.
+          toolchain_bin="$(dirname "$(rustup which cargo)")"
+          export PATH="$toolchain_bin:$PATH" CARGO="$toolchain_bin/cargo" RUSTC="$toolchain_bin/rustc"
           ./gradlew :app:assembleRelease
           suffix=""
           [ "$GITHUB_REF_TYPE" = tag ] || suffix="-dev.$GITHUB_RUN_NUMBER"
