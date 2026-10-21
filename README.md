@@ -1,4 +1,4 @@
-# Raw2DNG
+# Raw2DNG2
 
 Convert your camera's RAW photos to DNG or JPEG, right on your phone.
 
@@ -19,6 +19,9 @@ I shoot Canon RAW and wanted DNGs and quick JPEGs straight from my phone, withou
 - Converted files go to **Pictures/Raw2DNG**, or a folder you choose.
 - No account, no ads, no internet access. Your photos never leave the phone.
 - Works on Android 5.0 and newer, phones and tablets, light and dark theme.
+
+## Why make this?
+The original Raw2DNG app that I used, available in the Google Play Store, is no longer maintained and cannot be installed on my recent phone anymore. It also has a quite clunky UI.
 
 ## Download
 
