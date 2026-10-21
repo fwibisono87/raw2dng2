@@ -108,7 +108,7 @@ android {
     ndkVersion = ndkVersionForRust
 
     defaultConfig {
-        applicationId = "com.raw2dng"
+        applicationId = "com.franciswibisono.raw2dng2"
         minSdk = 21
         targetSdk = 36
         versionCode = appVersionCode
