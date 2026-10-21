@@ -55,6 +55,7 @@
     <string name="cancelled_summary">Cancelled · %1$s converted, %2$s failed · saved to %3$s</string>
     <string name="about_text">Raw2DNG 0.1.0\n\nThe app is MIT licensed.\nUses rawler (dnglab), LGPL-2.1.\n\nrawler source: https://github.com/dnglab/dnglab\nProject source (placeholder): https://github.com/PLACEHOLDER/raw2dng</string>
     <string name="about_title">About Raw2DNG</string>
+    <string name="jpeg_develop_hint">Develops every photo from the RAW data. Slower and uses more memory than the camera JPEG.</string>
     <string name="clear_list">Clear list</string>
     <string name="cannot_read_file">Can\'t read this file. Try adding it with Add files.</string>
     <plurals name="convert_count">

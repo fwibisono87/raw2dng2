@@ -82,6 +82,7 @@ class MainActivity : Activity() {
     private lateinit var addFilesButton: Button
     private lateinit var convertButton: Button
     private lateinit var progressPanel: View
+    private lateinit var sourceHint: TextView
     private lateinit var progressLabel: TextView
     private lateinit var conversionProgress: ProgressBar
     private lateinit var cancelButton: Button
@@ -225,6 +226,12 @@ class MainActivity : Activity() {
         applyPrimaryButtonStyle(addEmptyButton)
         applyPrimaryButtonStyle(convertButton)
 
+        val sideInset = dp(((resources.configuration.screenWidthDp - MAX_CONTENT_WIDTH_DP) / 2).coerceAtLeast(0))
+        list.setPadding(sideInset, list.paddingTop, sideInset, list.paddingBottom)
+        list.scrollBarStyle = View.SCROLLBARS_OUTSIDE_OVERLAY
+        val bar = findViewById<View>(R.id.bottomBar)
+        bar.setPadding(bar.paddingLeft + sideInset, bar.paddingTop, bar.paddingRight + sideInset, bar.paddingBottom)
+
         bindSettingsHeader()
         updateFolderLabel()
         updateFormatPanels()
@@ -252,6 +259,7 @@ class MainActivity : Activity() {
         jpegOptions = header.findViewById(R.id.jpegOptions)
         embedOriginal = header.findViewById(R.id.embedOriginal)
         sourceSpinner = header.findViewById(R.id.sourceSpinner)
+        sourceHint = header.findViewById(R.id.sourceHint)
         sizeSpinner = header.findViewById(R.id.sizeSpinner)
         customSizeRow = header.findViewById(R.id.customSizeRow)
         customSize = header.findViewById(R.id.customSize)
@@ -291,6 +299,7 @@ class MainActivity : Activity() {
         }
         sourceSpinner.onItemSelectedListener = onSelection { position ->
             prefs.edit().putInt(KEY_SOURCE, position).apply()
+            sourceHint.setText(if (position == 1) R.string.jpeg_develop_hint else R.string.jpeg_source_hint)
             clearFinishedSummary()
         }
         sizeSpinner.onItemSelectedListener = onSelection { position ->
@@ -885,6 +894,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val TAG = "Raw2DNG"
+        private const val MAX_CONTENT_WIDTH_DP = 640
         private const val REQUEST_PICK = 11
         private const val REQUEST_FOLDER = 12
         private const val REQUEST_NOTIFICATIONS = 13
