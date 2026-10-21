@@ -24,6 +24,7 @@
             android:id="@+id/formatDng"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:buttonTint="?android:attr/colorAccent"
             android:text="@string/format_dng" />
 
         <RadioButton
@@ -31,6 +32,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
+            android:buttonTint="?android:attr/colorAccent"
             android:text="@string/format_jpeg" />
     </RadioGroup>
 
@@ -44,6 +46,7 @@
             android:id="@+id/embedOriginal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:buttonTint="?android:attr/colorAccent"
             android:text="@string/embed_original" />
 
         <TextView
@@ -78,9 +81,7 @@
             android:paddingBottom="4dp"
             android:text="@string/jpeg_source_hint"
             android:textColor="?android:attr/textColorSecondary"
-            android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:textSize="13sp" />
 
         <TextView style="@style/FieldLabel" android:text="@string/long_edge" />
         <LinearLayout
@@ -157,7 +158,9 @@
             android:id="@+id/qualitySeekBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="40" />
+            android:max="40"
+            android:progressTint="?android:attr/colorAccent"
+            android:thumbTint="?android:attr/colorAccent" />
     </LinearLayout>
 
     <TextView

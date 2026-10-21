@@ -120,7 +120,8 @@
                     android:layout_height="wrap_content"
                     android:indeterminate="false"
                     android:max="100"
-                    android:progress="0" />
+                    android:progress="0"
+                    android:progressTint="?android:attr/colorAccent" />
             </LinearLayout>
 
             <Button

@@ -178,11 +178,7 @@ class MainActivity : Activity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.menuClearQueue -> {
-            if (!running) {
-                queue.clear()
-                clearFinishedSummary()
-                refreshQueueUi()
-            }
+            clearQueue()
             true
         }
         R.id.menuAbout -> {
@@ -224,7 +220,7 @@ class MainActivity : Activity() {
 
         addEmptyButton.setOnClickListener { pickFiles() }
         addFilesButton.setOnClickListener { pickFiles() }
-        convertButton.setOnClickListener { startConversion() }
+        convertButton.setOnClickListener { if (pendingItems().isEmpty() && queue.any(::isDone)) clearQueue() else startConversion() }
         cancelButton.setOnClickListener { cancelConversion() }
         applyPrimaryButtonStyle(addEmptyButton)
         applyPrimaryButtonStyle(convertButton)
@@ -284,9 +280,10 @@ class MainActivity : Activity() {
         formatGroup.setOnCheckedChangeListener { _, checkedId ->
             val format = if (checkedId == R.id.formatJpeg) FORMAT_JPEG else FORMAT_DNG
             prefs.edit().putInt(KEY_FORMAT, format).apply()
+            queue.filter(::isDone).forEach { it.status = "Pending" }
             updateFormatPanels()
             clearFinishedSummary()
-            updateBottomBar()
+            refreshQueueUi()
         }
         embedOriginal.setOnCheckedChangeListener { _, checked ->
             prefs.edit().putBoolean(KEY_EMBED, checked).apply()
@@ -490,7 +487,11 @@ class MainActivity : Activity() {
             }
         } catch (exception: Exception) {
             item.error = exception.message ?: "Unsupported RAW file"
-            item.status = "Unsupported · ${item.error}"
+            item.status = if (exception is SecurityException || exception is java.io.FileNotFoundException) {
+                getString(R.string.cannot_read_file)
+            } else {
+                "Unsupported · ${item.error}"
+            }
             Log.w(TAG, "Could not inspect ${item.name}: ${item.error}", exception)
         }
         runOnUiThread { refreshQueueUi() }
@@ -569,9 +570,20 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
+    private fun isDone(item: QueueItem): Boolean = item.status.startsWith("Done")
+
+    private fun pendingItems(): List<QueueItem> = queue.filter { it.error == null && !isDone(it) }
+
+    private fun clearQueue() {
+        if (running) return
+        queue.clear()
+        clearFinishedSummary()
+        refreshQueueUi()
+    }
+
     private fun startConversion() {
         if (running) return
-        val convertibleItems = queue.filter { it.error == null }
+        val convertibleItems = pendingItems()
         if (convertibleItems.isEmpty()) return
         if (Build.VERSION.SDK_INT < 29 && outputFolder == null) return
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -605,7 +617,7 @@ class MainActivity : Activity() {
         progressCurrent = 0
         progressTotal = convertibleItems.size
         progressStatus = ""
-        queue.forEach { if (it.error == null) it.status = "Queued" }
+        convertibleItems.forEach { it.status = "Queued" }
         refreshQueueUi()
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
@@ -706,11 +718,13 @@ class MainActivity : Activity() {
         finishedSummary.text = finishedSummaryText.orEmpty()
         finishedSummary.visibility = if (!running && !finishedSummaryText.isNullOrBlank()) View.VISIBLE else View.GONE
 
-        val convertibleCount = queue.count { it.error == null }
-        convertButton.text = resources.getQuantityString(R.plurals.convert_count, convertibleCount, convertibleCount)
+        val convertibleCount = pendingItems().size
+        val allDone = convertibleCount == 0 && queue.any(::isDone)
+        convertButton.text = if (allDone) getString(R.string.clear_list)
+            else resources.getQuantityString(R.plurals.convert_count, convertibleCount, convertibleCount)
         val folderMissing = Build.VERSION.SDK_INT < 29 && outputFolder == null
         folderRequiredHint.visibility = if (!running && !empty && folderMissing) View.VISIBLE else View.GONE
-        convertButton.isEnabled = convertibleCount > 0 && !folderMissing && !running
+        convertButton.isEnabled = allDone || (convertibleCount > 0 && !folderMissing && !running)
         progressLabel.text = when {
             progressStatus.isNotBlank() -> progressStatus
             progressTotal > 0 -> {
@@ -787,7 +801,7 @@ class MainActivity : Activity() {
 
     private fun applyPrimaryButtonStyle(button: Button) {
         val accent = resolveThemeColor(android.R.attr.colorAccent, 0xff0b7770.toInt())
-        val disabled = (accent and 0x00ffffff) or (((accent ushr 24) * 0.38f).toInt().coerceIn(0, 255) shl 24)
+        val disabled = 0x33808080
         val textColor = if (relativeLuminance(accent) > 0.179f) Color.BLACK else Color.WHITE
         button.backgroundTintList = ColorStateList(
             arrayOf(intArrayOf(android.R.attr.state_enabled), intArrayOf()),
@@ -795,7 +809,7 @@ class MainActivity : Activity() {
         )
         button.setTextColor(ColorStateList(
             arrayOf(intArrayOf(android.R.attr.state_enabled), intArrayOf()),
-            intArrayOf(textColor, if (textColor == Color.WHITE) 0xffdddddd.toInt() else 0xff444444.toInt())
+            intArrayOf(textColor, 0x99808080.toInt())
         ))
     }
 
