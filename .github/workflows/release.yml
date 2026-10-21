@@ -1,0 +1,123 @@
+name: Release
+
+# Releases are annotated tags whose message is the codename, matching app/version.properties:
+#   git tag -a v1.0.0 -m "Saint Lite" && git push origin v1.0.0
+# That builds a signed APK and publishes it as the GitHub release v1.0.0 "Saint Lite".
+# Running the workflow by hand builds the APK and keeps it as a workflow artifact only.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch the tag object itself so its message (the codename) can be read.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read the version
+        id: version
+        run: |
+          prop() { sed -n "s/^$1=//p" app/version.properties; }
+          name=$(prop versionName)
+          codename=$(prop codename)
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "codename=$codename" >> "$GITHUB_OUTPUT"
+          echo "version.properties: $name \"$codename\""
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+            tag_codename=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+            echo "tag: $GITHUB_REF_NAME \"$tag_codename\""
+            if [ "${GITHUB_REF_NAME#v}" != "$name" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match versionName $name in app/version.properties."
+              exit 1
+            fi
+            if [ "$tag_codename" != "$codename" ]; then
+              echo "::error::Tag message '$tag_codename' does not match codename '$codename'. Tag with: git tag -a $GITHUB_REF_NAME -m \"$codename\""
+              exit 1
+            fi
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" > /dev/null
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cargo-home/registry
+            .cargo-home/git
+            native/target
+          key: rust-${{ runner.os }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            if [ "$GITHUB_REF_TYPE" = tag ]; then
+              echo "::error::Release signing secrets are not set, refusing to publish a debug-signed APK."
+              exit 1
+            fi
+            echo "::warning::No signing secrets, so this test APK is signed with a throwaway debug key."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          mkdir -p ~/.gradle
+          {
+            echo "release.storeFile=$RUNNER_TEMP/release.jks"
+            echo "release.storePassword=$STORE_PASSWORD"
+            echo "release.keyAlias=$KEY_ALIAS"
+            echo "release.keyPassword=$KEY_PASSWORD"
+          } >> ~/.gradle/gradle.properties
+
+      - name: Build
+        run: |
+          export CARGO="$(rustup which cargo)"
+          ./gradlew :app:assembleRelease
+          suffix=""
+          [ "$GITHUB_REF_TYPE" = tag ] || suffix="-dev.$GITHUB_RUN_NUMBER"
+          apk="Raw2DNG-${{ steps.version.outputs.name }}$suffix.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          ls -l "$apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Raw2DNG-apk
+          path: Raw2DNG-*.apk*
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" Raw2DNG-*.apk Raw2DNG-*.apk.sha256 \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME \"${{ steps.version.outputs.codename }}\"" \
+            --generate-notes
