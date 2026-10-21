@@ -1,8 +1,5 @@
-use raw2dng::{JpegSource, to_dng_bytes, to_jpeg_bytes};
+use raw2dng::{JpegSource, preview_bytes, probe_bytes, to_dng_bytes, to_jpeg_bytes};
 use std::fs;
-use rawler::decoders::RawDecodeParams;
-use rawler::rawsource::RawSource;
-use std::sync::Arc;
 
 fn hwm_kib() -> Option<u64> {
     let status = fs::read_to_string("/proc/self/status").ok()?;
@@ -15,43 +12,71 @@ fn hwm_kib() -> Option<u64> {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let mode = args.next().expect("mode: probe | dng | embedded | develop1080 | developOriginal");
+    let mode = args
+        .next()
+        .expect("mode: probe | preview256 | dng | embedded | develop1080 | developOriginal");
     let paths: Vec<_> = args.map(std::path::PathBuf::from).collect();
-    assert!(!paths.is_empty(), "provide at least one RAW path");
-    if mode == "probe" {
-        for path in paths {
-            let raw = fs::read(&path).expect("read sample");
-            let source = RawSource::new_from_shared_vec(Arc::new(raw));
-            let decoder = rawler::get_decoder(&source).expect("create decoder");
-            let metadata = decoder.raw_metadata(&source, &RawDecodeParams::default()).expect("read metadata");
-            let orientation = metadata.exif.orientation.unwrap_or(1);
-            if orientation != 1 {
-                println!("{} orientation={} {} {}", path.display(), orientation, metadata.make, metadata.model);
-            }
-        }
-        return;
-    }
-    assert_eq!(paths.len(), 1, "memory modes accept one RAW path per process");
+    assert_eq!(
+        paths.len(),
+        1,
+        "bench modes accept one RAW path per process"
+    );
     let path = &paths[0];
     let raw = fs::read(path).expect("read sample");
+    let start = std::time::Instant::now();
     match mode.as_str() {
+        "probe" => {
+            let result = probe_bytes(raw).expect("probe sample");
+            println!(
+                "{} {} raw={}x{} orientation={} embedded={} jpeg={}x{}",
+                result.make,
+                result.model,
+                result.width,
+                result.height,
+                result.orientation,
+                result.has_jpeg,
+                result.jpeg_width,
+                result.jpeg_height
+            );
+        }
+        "preview256" => {
+            let result = preview_bytes(raw, 256)
+                .expect("preview sample")
+                .expect("embedded preview");
+            println!("JPEG bytes={}", result.len());
+        }
         "dng" => {
-            let output = to_dng_bytes(raw, false).expect("convert DNG");
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("sample.raw");
+            let output = to_dng_bytes(raw, file_name, false).expect("convert DNG");
             println!("DNG bytes={}", output.len());
         }
         "embedded" => {
             let output = to_jpeg_bytes(raw, JpegSource::Auto, 1080, 0, 92).expect("embedded JPEG");
-            println!("JPEG source={} {}x{} bytes={}", output.info.source, output.info.width, output.info.height, output.info.bytes);
+            println!(
+                "JPEG source={} {}x{} bytes={}",
+                output.info.source, output.info.width, output.info.height, output.info.bytes
+            );
         }
         "develop1080" => {
-            let output = to_jpeg_bytes(raw, JpegSource::Develop, 1080, 0, 92).expect("developed JPEG");
-            println!("JPEG source={} {}x{} bytes={}", output.info.source, output.info.width, output.info.height, output.info.bytes);
+            let output =
+                to_jpeg_bytes(raw, JpegSource::Develop, 1080, 0, 92).expect("developed JPEG");
+            println!(
+                "JPEG source={} {}x{} bytes={}",
+                output.info.source, output.info.width, output.info.height, output.info.bytes
+            );
         }
         "developOriginal" => {
             let output = to_jpeg_bytes(raw, JpegSource::Develop, 0, 0, 92).expect("developed JPEG");
-            println!("JPEG source={} {}x{} bytes={}", output.info.source, output.info.width, output.info.height, output.info.bytes);
+            println!(
+                "JPEG source={} {}x{} bytes={}",
+                output.info.source, output.info.width, output.info.height, output.info.bytes
+            );
         }
         other => panic!("unknown mode {other}"),
     }
+    println!("elapsed={} ms", start.elapsed().as_millis());
     println!("VmHWM={} KiB", hwm_kib().unwrap_or_default());
 }

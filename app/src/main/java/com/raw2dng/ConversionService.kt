@@ -109,7 +109,7 @@ class ConversionService : Service() {
                             val source = options.getInt(OPTION_ITEM_SOURCE_PREFIX + uriString, globalSource)
                             Native.toJpeg(input.fd, output.fd, source, longEdge, maxBytes, quality)
                         } else {
-                            Native.toDng(input.fd, output.fd, embed)
+                            Native.toDng(input.fd, output.fd, name, embed)
                         }
                     }
                 }

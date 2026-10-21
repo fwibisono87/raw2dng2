@@ -4,15 +4,22 @@ use std::os::fd::FromRawFd;
 use std::sync::Arc;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, ImageEncoder, imageops::FilterType};
+use image::{DynamicImage, ImageBuffer, ImageEncoder, imageops::FilterType};
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jstring};
 use rawler::decoders::{Decoder, Orientation, RawDecodeParams, RawMetadata};
 use rawler::dng::convert::{ConvertParams, convert_raw_source};
 use rawler::formats::tiff::Rational;
-use rawler::imgop::develop::RawDevelop;
-use rawler::rawimage::RawImage;
+use rawler::imgop::develop::{Intermediate, ProcessingStep, RawDevelop};
+use rawler::imgop::sensor::Demosaic;
+use rawler::imgop::sensor::SensorType;
+use rawler::imgop::sensor::bayer::superpixel::Superpixel3Channel;
+use rawler::imgop::{Dim2, Point, Rect};
+use rawler::pixarray::{Color2D, PixF32};
+use rawler::rawimage::{
+    BlackLevel, RawImage, RawImageData, RawPhotometricInterpretation, WhiteLevel,
+};
 use rawler::rawsource::RawSource;
 
 const SOFTWARE: &str = "Raw2DNG 0.1.0";
@@ -51,11 +58,11 @@ pub struct JpegOutput {
     pub info: JpegInfo,
 }
 
-struct LoadedRaw {
-    raw: RawImage,
+struct RawContext {
+    source: RawSource,
+    decoder: Box<dyn Decoder>,
+    params: RawDecodeParams,
     metadata: RawMetadata,
-    embedded: Option<DynamicImage>,
-    orientation: Orientation,
 }
 
 fn raw_error(error: impl std::fmt::Display) -> String {
@@ -67,48 +74,188 @@ fn raw_error(error: impl std::fmt::Display) -> String {
     }
 }
 
-fn load_raw(bytes: Vec<u8>, include_embedded: bool) -> Result<LoadedRaw, String> {
+impl RawContext {
+    fn raw_image(&self, dummy: bool) -> Result<RawImage, String> {
+        self.decoder
+            .raw_image(&self.source, &self.params, dummy)
+            .map_err(raw_error)
+    }
+
+    fn orientation(&self, fallback: Option<Orientation>) -> Orientation {
+        self.metadata_orientation()
+            .or(fallback)
+            .unwrap_or(Orientation::Normal)
+    }
+
+    fn metadata_orientation(&self) -> Option<Orientation> {
+        self.metadata
+            .exif
+            .orientation
+            .map(Orientation::from_u16)
+            .filter(|orientation| *orientation != Orientation::Unknown)
+    }
+
+    fn orientation_with_dummy_fallback(&self) -> Result<Orientation, String> {
+        if let Some(orientation) = self.metadata_orientation() {
+            return Ok(orientation);
+        }
+        let raw = self.raw_image(true)?;
+        Ok(self.orientation(Some(raw.orientation)))
+    }
+}
+
+fn open_raw(bytes: Vec<u8>) -> Result<RawContext, String> {
     let source = RawSource::new_from_shared_vec(Arc::new(bytes));
     let decoder = rawler::get_decoder(&source).map_err(raw_error)?;
     let params = RawDecodeParams::default();
     let metadata = decoder.raw_metadata(&source, &params).map_err(raw_error)?;
-    let raw = decoder.raw_image(&source, &params, false).map_err(raw_error)?;
-    let orientation = metadata
-        .exif
-        .orientation
-        .map(Orientation::from_u16)
-        .filter(|orientation| *orientation != Orientation::Unknown)
-        .unwrap_or(raw.orientation);
-    let embedded = if include_embedded {
-        largest_embedded(decoder.as_ref(), &source, &params).map_err(raw_error)?
-    } else {
-        None
-    };
-    Ok(LoadedRaw { raw, metadata, embedded, orientation })
+    Ok(RawContext {
+        source,
+        decoder,
+        params,
+        metadata,
+    })
 }
 
-fn largest_embedded(
-    decoder: &dyn Decoder,
-    source: &RawSource,
-    params: &RawDecodeParams,
+#[derive(Clone, Copy)]
+enum EmbeddedKind {
+    Thumbnail,
+    Preview,
+    Full,
+}
+
+fn decode_embedded(
+    context: &RawContext,
+    kind: EmbeddedKind,
 ) -> rawler::Result<Option<DynamicImage>> {
-    let mut largest = None;
-    for candidate in [
-        decoder.full_image(source, params)?,
-        decoder.preview_image(source, params)?,
-        decoder.thumbnail_image(source, params)?,
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if largest.as_ref().is_none_or(|current: &DynamicImage| {
-            candidate.width() as u64 * candidate.height() as u64
+    match kind {
+        EmbeddedKind::Thumbnail => context
+            .decoder
+            .thumbnail_image(&context.source, &context.params),
+        EmbeddedKind::Preview => context
+            .decoder
+            .preview_image(&context.source, &context.params),
+        EmbeddedKind::Full => context.decoder.full_image(&context.source, &context.params),
+    }
+}
+
+fn select_embedded(context: &RawContext, min_long_edge: u32) -> Option<DynamicImage> {
+    let mut largest: Option<DynamicImage> = None;
+    for kind in [
+        EmbeddedKind::Thumbnail,
+        EmbeddedKind::Preview,
+        EmbeddedKind::Full,
+    ] {
+        let Ok(Some(image)) = decode_embedded(context, kind) else {
+            continue;
+        };
+        if min_long_edge > 0 && image.width().max(image.height()) >= min_long_edge {
+            return Some(image);
+        }
+        if largest.as_ref().is_none_or(|current| {
+            image.width() as u64 * image.height() as u64
                 > current.width() as u64 * current.height() as u64
         }) {
-            largest = Some(candidate);
+            largest = Some(image);
         }
     }
-    Ok(largest)
+    largest
+}
+
+fn decode_largest_embedded(context: &RawContext) -> Option<DynamicImage> {
+    // These accessors are optional per decoder. Prefer its full-resolution image,
+    // then its preview, and stop as soon as the decoder supplies one.
+    for kind in [
+        EmbeddedKind::Full,
+        EmbeddedKind::Preview,
+        EmbeddedKind::Thumbnail,
+    ] {
+        if let Ok(Some(image)) = decode_embedded(context, kind) {
+            return Some(image);
+        }
+    }
+    None
+}
+
+fn largest_embedded_dimensions(context: &RawContext) -> Option<(u32, u32)> {
+    let mut largest = None;
+    for kind in [
+        EmbeddedKind::Full,
+        EmbeddedKind::Preview,
+        EmbeddedKind::Thumbnail,
+    ] {
+        if let Ok(Some(image)) = decode_embedded(context, kind) {
+            let dimensions = (image.width(), image.height());
+            if largest.is_none_or(|(width, height)| {
+                dimensions.0 as u64 * dimensions.1 as u64 > width as u64 * height as u64
+            }) {
+                largest = Some(dimensions);
+            }
+            // Drop the decoded pixels immediately; probe only needs the SOF dimensions.
+            drop(image);
+        }
+    }
+    largest
+}
+
+fn jpeg_sof_dimensions(bytes: &[u8], start: usize) -> Option<(u32, u32)> {
+    if bytes.get(start..start + 2)? != [0xff, 0xd8] {
+        return None;
+    }
+    let mut position = start + 2;
+    while position + 4 <= bytes.len() {
+        if bytes[position] != 0xff {
+            return None;
+        }
+        while bytes.get(position) == Some(&0xff) {
+            position += 1;
+        }
+        let marker = *bytes.get(position)?;
+        position += 1;
+        if marker == 0xd9 || marker == 0xda {
+            return None;
+        }
+        if marker == 0xd8 || (0xd0..=0xd7).contains(&marker) || marker == 0x01 {
+            continue;
+        }
+        let length =
+            u16::from_be_bytes([*bytes.get(position)?, *bytes.get(position + 1)?]) as usize;
+        if length < 2 || position.checked_add(length)? > bytes.len() {
+            return None;
+        }
+        // Camera display JPEGs use DCT SOF0/1/2. Lossless SOF3 is common in raw
+        // sensor streams (including CR2) and is not an embedded camera JPEG.
+        if matches!(marker, 0xc0..=0xc2) && length >= 8 {
+            let height = u16::from_be_bytes([*bytes.get(position + 3)?, *bytes.get(position + 4)?]);
+            let width = u16::from_be_bytes([*bytes.get(position + 5)?, *bytes.get(position + 6)?]);
+            if width > 0 && height > 0 {
+                return Some((u32::from(width), u32::from(height)));
+            }
+            return None;
+        }
+        position += length;
+    }
+    None
+}
+
+fn largest_jpeg_sof_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let mut best = None;
+    let mut search_from = 0;
+    while let Some(offset) = bytes[search_from..]
+        .windows(2)
+        .position(|window| window == [0xff, 0xd8])
+        .map(|relative| search_from + relative)
+    {
+        if let Some(dimensions) = jpeg_sof_dimensions(bytes, offset)
+            && best.is_none_or(|(width, height)| {
+                dimensions.0 as u64 * dimensions.1 as u64 > width as u64 * height as u64
+            })
+        {
+            best = Some(dimensions);
+        }
+        search_from = offset + 2;
+    }
+    best
 }
 
 fn orientation_number(orientation: Orientation) -> u16 {
@@ -139,36 +286,47 @@ fn orient(image: DynamicImage, orientation: Orientation) -> DynamicImage {
 }
 
 pub fn probe_bytes(bytes: Vec<u8>) -> Result<Probe, String> {
-    let loaded = load_raw(bytes, true)?;
-    let (jpeg_width, jpeg_height) = loaded
-        .embedded
-        .as_ref()
-        .map(|image| (image.width(), image.height()))
-        .unwrap_or((0, 0));
+    let context = open_raw(bytes)?;
+    // Rawler's dummy path parses image dimensions but uses uninitialized storage and skips
+    // pixel decompression. Its embedded image methods expose only decoded DynamicImages.
+    let raw = context.raw_image(true)?;
+    let orientation = context.orientation(Some(raw.orientation));
+    let width = raw.width;
+    let height = raw.height;
+    drop(raw);
+    let dimensions = largest_jpeg_sof_dimensions(context.source.buf())
+        .or_else(|| largest_embedded_dimensions(&context));
+    let (jpeg_width, jpeg_height) = dimensions.unwrap_or((0, 0));
     Ok(Probe {
-        make: loaded.metadata.make,
-        model: loaded.metadata.model,
-        width: loaded.raw.width,
-        height: loaded.raw.height,
-        orientation: orientation_number(loaded.orientation),
-        has_jpeg: loaded.embedded.is_some(),
+        make: context.metadata.make.clone(),
+        model: context.metadata.model.clone(),
+        width,
+        height,
+        orientation: orientation_number(orientation),
+        has_jpeg: dimensions.is_some(),
         jpeg_width,
         jpeg_height,
-        datetime: loaded.metadata.exif.date_time_original,
+        datetime: context.metadata.exif.date_time_original.clone(),
     })
 }
 
 pub fn preview_bytes(bytes: Vec<u8>, max_edge: u32) -> Result<Option<Vec<u8>>, String> {
-    let loaded = load_raw(bytes, true)?;
-    let Some(image) = loaded.embedded else {
+    let context = open_raw(bytes)?;
+    let Some(image) = select_embedded(&context, max_edge.max(1)) else {
         return Ok(None);
     };
-    let mut image = orient(image, loaded.orientation);
+    let orientation = context.orientation_with_dummy_fallback()?;
+    drop(context);
+    let mut image = orient(image, orientation);
     image = resize_long_edge(image, max_edge, FilterType::Triangle);
     encode_jpeg(&image, 82).map(Some)
 }
 
-pub fn to_dng_bytes(bytes: Vec<u8>, embed_original: bool) -> Result<Vec<u8>, String> {
+pub fn to_dng_bytes(
+    bytes: Vec<u8>,
+    file_name: &str,
+    embed_original: bool,
+) -> Result<Vec<u8>, String> {
     let source = RawSource::new_from_shared_vec(Arc::new(bytes));
     let mut cursor = Cursor::new(Vec::new());
     let params = ConvertParams {
@@ -178,7 +336,7 @@ pub fn to_dng_bytes(bytes: Vec<u8>, embed_original: bool) -> Result<Vec<u8>, Str
         software: SOFTWARE.to_owned(),
         ..ConvertParams::default()
     };
-    convert_raw_source(&source, &mut cursor, "input.raw", &params).map_err(raw_error)?;
+    convert_raw_source(&source, &mut cursor, file_name, &params).map_err(raw_error)?;
     Ok(cursor.into_inner())
 }
 
@@ -189,46 +347,74 @@ pub fn to_jpeg_bytes(
     max_bytes: usize,
     quality: u8,
 ) -> Result<JpegOutput, String> {
-    let loaded = load_raw(bytes, true)?;
-    let embedded_edge = loaded
-        .embedded
+    let context = open_raw(bytes)?;
+    let metadata = context.metadata.clone();
+    let mut raw_dimensions = None;
+    let threshold = if source_choice == JpegSource::Auto {
+        if long_edge > 0 {
+            long_edge
+        } else {
+            let raw = context.raw_image(true)?;
+            raw_dimensions = Some((raw.width, raw.height, raw.orientation));
+            (raw.width.max(raw.height) as f64 * 0.9).ceil() as u32
+        }
+    } else {
+        0
+    };
+
+    // Use the JPEG SOF dimensions to decide whether an embedded image qualifies
+    // before asking rawler to decode its pixels. This avoids decoding a full JPEG
+    // when AUTO will reject it and develop from the raw sensor data instead.
+    let embedded_dimensions = if source_choice == JpegSource::Develop {
+        None
+    } else {
+        largest_jpeg_sof_dimensions(context.source.buf())
+    };
+    let embedded_qualifies = embedded_dimensions
+        .map(|(width, height)| width.max(height) >= threshold)
+        .unwrap_or(true);
+    let embedded = match source_choice {
+        JpegSource::Develop => None,
+        JpegSource::EmbeddedOnly if embedded_qualifies => decode_largest_embedded(&context),
+        JpegSource::EmbeddedOnly => None,
+        JpegSource::Auto if embedded_qualifies => decode_largest_embedded(&context),
+        JpegSource::Auto => None,
+    };
+    let embedded_edge = embedded
         .as_ref()
         .map(|image| image.width().max(image.height()))
         .unwrap_or(0);
-    let raw_edge = loaded.raw.width.max(loaded.raw.height) as u32;
     let use_embedded = match source_choice {
-        JpegSource::EmbeddedOnly => loaded.embedded.is_some(),
         JpegSource::Develop => false,
+        JpegSource::EmbeddedOnly => embedded.is_some(),
         JpegSource::Auto => {
-            let threshold = if long_edge > 0 {
-                long_edge
-            } else {
-                (raw_edge as f64 * 0.9).ceil() as u32
-            };
-            loaded.embedded.is_some() && embedded_edge >= threshold
+            embedded.is_some()
+                && embedded_edge >= threshold
+                && embedded_qualifies
         }
     };
     if source_choice == JpegSource::EmbeddedOnly && !use_embedded {
         return Err("This RAW file has no embedded camera JPEG.".to_owned());
     }
 
-    let LoadedRaw { raw, metadata, embedded, orientation } = loaded;
-    let source_name = if use_embedded { "embedded" } else { "developed" };
-    let mut image = if use_embedded {
-        drop(raw);
-        embedded.ok_or_else(|| "This RAW file has no embedded camera JPEG.".to_owned())?
+    let source_name = if use_embedded {
+        "embedded"
     } else {
-        // The preview can be a full-size camera JPEG. Release it before demosaicing.
+        "developed"
+    };
+    let (mut image, orientation) = if use_embedded {
+        let orientation = match raw_dimensions {
+            Some((_, _, fallback)) => context.orientation(Some(fallback)),
+            None => context.orientation_with_dummy_fallback()?,
+        };
+        drop(context);
+        (embedded.expect("selected embedded image"), orientation)
+    } else {
         drop(embedded);
-        let image = RawDevelop::default()
-            .develop_intermediate(&raw)
-            .map_err(raw_error)?
-            .to_dynamic_image()
-            .ok_or_else(|| "Could not create developed image.".to_owned())?
-            .to_rgb8()
-            .into();
-        drop(raw);
-        image
+        let raw = context.raw_image(false)?;
+        let orientation = context.orientation(Some(raw.orientation));
+        drop(context);
+        (develop_raw(raw, long_edge)?, orientation)
     };
     image = orient(image, orientation);
     if long_edge > 0 {
@@ -236,6 +422,159 @@ pub fn to_jpeg_bytes(
     }
 
     encode_limited(image, source_name, &metadata, max_bytes, quality)
+}
+
+fn should_bin_bayer(raw: &RawImage, long_edge: u32) -> bool {
+    if long_edge == 0 || (long_edge as u64 * 2) > raw.width.max(raw.height) as u64 || raw.cpp != 1 {
+        return false;
+    }
+    if raw.fuji_rotation_width.is_some() {
+        return false;
+    }
+    matches!(
+        &raw.photometric,
+        RawPhotometricInterpretation::Cfa(config)
+            if config.sensor == SensorType::Bayer && config.cfa.is_rgb() && config.colors.plane_count() == 3
+    )
+}
+
+fn downsample_rgb_2x2(input: Color2D<f32, 3>) -> Color2D<f32, 3> {
+    let out_width = input.width / 2;
+    let out_height = input.height / 2;
+    let mut output = Vec::with_capacity(out_width * out_height);
+    for y in 0..out_height {
+        let row0 = (y * 2) * input.width;
+        let row1 = row0 + input.width;
+        for x in 0..out_width {
+            let column = x * 2;
+            let samples = [
+                input.data[row0 + column],
+                input.data[row0 + column + 1],
+                input.data[row1 + column],
+                input.data[row1 + column + 1],
+            ];
+            output.push([
+                (samples[0][0] + samples[1][0] + samples[2][0] + samples[3][0]) * 0.25,
+                (samples[0][1] + samples[1][1] + samples[2][1] + samples[3][1]) * 0.25,
+                (samples[0][2] + samples[1][2] + samples[2][2] + samples[3][2]) * 0.25,
+            ]);
+        }
+    }
+    Color2D::new_with(output, out_width, out_height)
+}
+
+fn bin_bayer(raw: &mut RawImage, long_edge: u32) -> Result<(), String> {
+    let config = match &raw.photometric {
+        RawPhotometricInterpretation::Cfa(config) => config.clone(),
+        _ => return Err("Binned development requires a Bayer CFA image.".to_owned()),
+    };
+    let input_width = raw.width;
+    let input_height = raw.height;
+    raw.apply_scaling().map_err(raw_error)?;
+    let pixels = match std::mem::replace(&mut raw.data, RawImageData::Float(Vec::new())) {
+        RawImageData::Float(pixels) => pixels,
+        RawImageData::Integer(_) => {
+            return Err("Could not scale Bayer pixels for binned development.".to_owned());
+        }
+    };
+    let input = PixF32::new_with(pixels, input_width, input_height);
+    let roi = Rect::new(Point::zero(), Dim2::new(input_width, input_height));
+    let mut reduced = Superpixel3Channel::new().demosaic(&input, &config.cfa, &config.colors, roi);
+    drop(input);
+
+    let mut scale = 2usize;
+    while long_edge > 0
+        && reduced.width.max(reduced.height) / 2 >= long_edge as usize
+        && reduced.width >= 2
+        && reduced.height >= 2
+    {
+        reduced = downsample_rgb_2x2(reduced);
+        scale *= 2;
+    }
+
+    let width = reduced.width;
+    let height = reduced.height;
+    raw.width = width;
+    raw.height = height;
+    raw.cpp = 3;
+    raw.data = RawImageData::Float(reduced.into_flatten());
+    raw.photometric = RawPhotometricInterpretation::LinearRaw;
+    raw.blacklevel = BlackLevel::zero(1, 1, 3);
+    raw.whitelevel = WhiteLevel::new(vec![1, 1, 1]);
+    raw.active_area = raw.active_area.map(|mut area| {
+        area.scale(1.0 / scale as f32);
+        area
+    });
+    raw.crop_area = raw.crop_area.map(|mut area| {
+        area.scale(1.0 / scale as f32);
+        area
+    });
+    raw.blackareas.clear();
+    Ok(())
+}
+
+fn develop_raw(mut raw: RawImage, long_edge: u32) -> Result<DynamicImage, String> {
+    let binned = should_bin_bayer(&raw, long_edge);
+    if binned {
+        bin_bayer(&mut raw, long_edge)?;
+    }
+    let developer = if binned {
+        RawDevelop::new_with(&[
+            ProcessingStep::WhiteBalance,
+            ProcessingStep::Calibrate,
+            ProcessingStep::CropDefault,
+            ProcessingStep::SRgb,
+        ])
+    } else {
+        RawDevelop::default()
+    };
+    let intermediate = developer.develop_intermediate(&raw).map_err(raw_error)?;
+    drop(raw);
+    intermediate_to_rgb8(intermediate)
+}
+
+fn f32_to_u8(value: f32) -> u8 {
+    let normalized = if value.is_nan() { 0.0 } else { value.clamp(0.0, 1.0) };
+    let value16 = (normalized * u16::MAX as f32) as u16;
+    ((u32::from(value16) + 128) / 257) as u8
+}
+
+fn intermediate_to_rgb8(intermediate: Intermediate) -> Result<DynamicImage, String> {
+    let (width, height, data): (usize, usize, Vec<u8>) = match intermediate {
+        Intermediate::Monochrome(pixels) => {
+            let mut data = Vec::with_capacity(pixels.data.len().saturating_mul(3));
+            for value in pixels.data {
+                let gray = f32_to_u8(value);
+                data.extend_from_slice(&[gray, gray, gray]);
+            }
+            (pixels.width, pixels.height, data)
+        }
+        Intermediate::ThreeColor(pixels) => {
+            let mut data = Vec::with_capacity(pixels.data.len().saturating_mul(3));
+            for [red, green, blue] in pixels.data {
+                data.extend_from_slice(&[
+                    f32_to_u8(red),
+                    f32_to_u8(green),
+                    f32_to_u8(blue),
+                ]);
+            }
+            (pixels.width, pixels.height, data)
+        }
+        Intermediate::FourColor(pixels) => {
+            let mut data = Vec::with_capacity(pixels.data.len().saturating_mul(3));
+            for [red, green, blue, _] in pixels.data {
+                data.extend_from_slice(&[
+                    f32_to_u8(red),
+                    f32_to_u8(green),
+                    f32_to_u8(blue),
+                ]);
+            }
+            (pixels.width, pixels.height, data)
+        }
+    };
+    ImageBuffer::from_raw(width as u32, height as u32, data)
+        .map(DynamicImage::ImageRgb8)
+        .ok_or_else(|| "Could not create developed image.".to_owned())
 }
 
 fn resize_long_edge(image: DynamicImage, edge: u32, filter: FilterType) -> DynamicImage {
@@ -292,7 +631,9 @@ fn encode_limited(
             });
         }
         if shrink_count >= 20 {
-            return Err("Could not fit JPEG within the requested file size after resizing.".to_owned());
+            return Err(
+                "Could not fit JPEG within the requested file size after resizing.".to_owned(),
+            );
         }
         let width = ((image.width() as f64) * 0.85).floor() as u32;
         let height = ((image.height() as f64) * 0.85).floor() as u32;
@@ -346,22 +687,42 @@ struct TiffEntry {
 fn ascii_entry(tag: u16, value: &str) -> TiffEntry {
     let mut data = value.as_bytes().to_vec();
     data.push(0);
-    TiffEntry { tag, kind: 2, count: data.len() as u32, data }
+    TiffEntry {
+        tag,
+        kind: 2,
+        count: data.len() as u32,
+        data,
+    }
 }
 
 fn short_entry(tag: u16, value: u16) -> TiffEntry {
-    TiffEntry { tag, kind: 3, count: 1, data: value.to_le_bytes().to_vec() }
+    TiffEntry {
+        tag,
+        kind: 3,
+        count: 1,
+        data: value.to_le_bytes().to_vec(),
+    }
 }
 
 fn long_entry(tag: u16, value: u32) -> TiffEntry {
-    TiffEntry { tag, kind: 4, count: 1, data: value.to_le_bytes().to_vec() }
+    TiffEntry {
+        tag,
+        kind: 4,
+        count: 1,
+        data: value.to_le_bytes().to_vec(),
+    }
 }
 
 fn rational_entry(tag: u16, value: Rational) -> TiffEntry {
     let mut data = Vec::with_capacity(8);
     data.extend_from_slice(&value.n.to_le_bytes());
     data.extend_from_slice(&value.d.to_le_bytes());
-    TiffEntry { tag, kind: 5, count: 1, data }
+    TiffEntry {
+        tag,
+        kind: 5,
+        count: 1,
+        data,
+    }
 }
 
 fn write_ifd(out: &mut Vec<u8>, entries: &mut [TiffEntry], start: u32) -> Result<(), String> {
@@ -407,10 +768,12 @@ fn exif_payload(metadata: &RawMetadata) -> Result<Vec<u8>, String> {
     if let Some(value) = exif.fnumber {
         sub.push(rational_entry(33437, value));
     }
-    if let Some(value) = exif.iso_speed.or_else(|| exif.iso_speed_ratings.map(u32::from)) {
-        if value <= u16::MAX as u32 {
-            sub.push(short_entry(34855, value as u16));
-        }
+    if let Some(value) = exif
+        .iso_speed
+        .or_else(|| exif.iso_speed_ratings.map(u32::from))
+        && value <= u16::MAX as u32
+    {
+        sub.push(short_entry(34855, value as u16));
     }
     if let Some(value) = exif.focal_length {
         sub.push(rational_entry(37386, value));
@@ -432,7 +795,11 @@ fn exif_payload(metadata: &RawMetadata) -> Result<Vec<u8>, String> {
     tiff.extend_from_slice(&8u32.to_le_bytes());
     let root_end = 8 + 2 + root.len() * 12 + 4;
     let sub_size = 2 + sub.len() * 12 + 4;
-    let root_external_size: usize = root.iter().filter(|entry| entry.data.len() > 4).map(|entry| entry.data.len()).sum();
+    let root_external_size: usize = root
+        .iter()
+        .filter(|entry| entry.data.len() > 4)
+        .map(|entry| entry.data.len())
+        .sum();
     let mut root_ifd = Vec::with_capacity(root_end - 8 + root_external_size);
     write_ifd(&mut root_ifd, &mut root, 8)?;
     if !sub.is_empty() {
@@ -502,7 +869,11 @@ fn probe_json(result: Result<Probe, String>) -> String {
             probe.has_jpeg,
             probe.jpeg_width,
             probe.jpeg_height,
-            probe.datetime.as_deref().map(|value| format!("\"{}\"", escaped_json(value))).unwrap_or_else(|| "null".to_owned())
+            probe
+                .datetime
+                .as_deref()
+                .map(|value| format!("\"{}\"", escaped_json(value)))
+                .unwrap_or_else(|| "null".to_owned())
         ),
         Err(error) => format!("{{\"error\":\"{}\"}}", escaped_json(&error)),
     }
@@ -529,7 +900,8 @@ fn read_fd(fd: jint) -> Result<Vec<u8>, String> {
     }
     let mut file = unsafe { std::fs::File::from_raw_fd(duplicated) };
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+    file.read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
     Ok(bytes)
 }
 
@@ -548,16 +920,27 @@ fn call_catching<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, 
 }
 
 fn java_string(env: &mut JNIEnv<'_>, value: &str) -> jstring {
-    env.new_string(value).map(JString::into_raw).unwrap_or(std::ptr::null_mut())
+    env.new_string(value)
+        .map(JString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_raw2dng_Native_probe(mut env: JNIEnv, _class: JClass, input_fd: jint) -> jstring {
+pub extern "system" fn Java_com_raw2dng_Native_probe(
+    mut env: JNIEnv,
+    _class: JClass,
+    input_fd: jint,
+) -> jstring {
     let json = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         probe_json(call_catching(|| read_fd(input_fd).and_then(probe_bytes)))
-    })).unwrap_or_else(|_| "{\"error\":\"Unexpected native panic while probing this RAW file.\"}".to_owned());
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| java_string(&mut env, &json)))
-        .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or_else(|_| {
+        "{\"error\":\"Unexpected native panic while probing this RAW file.\"}".to_owned()
+    });
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        java_string(&mut env, &json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
@@ -568,11 +951,17 @@ pub extern "system" fn Java_com_raw2dng_Native_preview(
     max_edge: jint,
 ) -> jbyteArray {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        match call_catching(|| read_fd(input_fd).and_then(|bytes| preview_bytes(bytes, max_edge.max(1) as u32))) {
-            Ok(Some(bytes)) => env.byte_array_from_slice(&bytes).map(JByteArray::into_raw).unwrap_or(std::ptr::null_mut()),
+        match call_catching(|| {
+            read_fd(input_fd).and_then(|bytes| preview_bytes(bytes, max_edge.max(1) as u32))
+        }) {
+            Ok(Some(bytes)) => env
+                .byte_array_from_slice(&bytes)
+                .map(JByteArray::into_raw)
+                .unwrap_or(std::ptr::null_mut()),
             _ => std::ptr::null_mut(),
         }
-    })).unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
@@ -581,17 +970,28 @@ pub extern "system" fn Java_com_raw2dng_Native_toDng(
     _class: JClass,
     input_fd: jint,
     output_fd: jint,
+    file_name: JString,
     embed_original: jboolean,
 ) -> jstring {
     let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         call_catching(|| {
+            let file_name = env
+                .get_string(&file_name)
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .into_owned();
             let bytes = read_fd(input_fd)?;
-            let dng = to_dng_bytes(bytes, embed_original != 0)?;
+            let dng = to_dng_bytes(bytes, &file_name, embed_original != 0)?;
             write_fd(output_fd, &dng)
-        }).err().unwrap_or_default()
-    })).unwrap_or_else(|_| "Unexpected native panic while writing the DNG.".to_owned());
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| java_string(&mut env, &error)))
-        .unwrap_or(std::ptr::null_mut())
+        })
+        .err()
+        .unwrap_or_default()
+    }))
+    .unwrap_or_else(|_| "Unexpected native panic while writing the DNG.".to_owned());
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        java_string(&mut env, &error)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
@@ -624,8 +1024,12 @@ pub extern "system" fn Java_com_raw2dng_Native_toJpeg(
             Ok(info)
         });
         jpeg_json(result)
-    })).unwrap_or_else(|_| "{\"ok\":false,\"error\":\"Unexpected native panic while writing the JPEG.\"}".to_owned());
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| java_string(&mut env, &json)))
-        .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or_else(|_| {
+        "{\"ok\":false,\"error\":\"Unexpected native panic while writing the JPEG.\"}".to_owned()
+    });
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        java_string(&mut env, &json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
-

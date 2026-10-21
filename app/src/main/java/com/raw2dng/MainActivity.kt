@@ -401,6 +401,10 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
         }
         val convertibleItems = queue.filter { it.error == null }
+        if (convertibleItems.isEmpty()) {
+            Toast.makeText(this, "There are no readable RAW files to convert.", Toast.LENGTH_LONG).show()
+            return
+        }
         val options = Bundle().apply {
             putInt(ConversionService.OPTION_FORMAT, formatSpinner.selectedItemPosition)
             putBoolean(ConversionService.OPTION_EMBED, embedRaw.isChecked)
@@ -416,6 +420,11 @@ class MainActivity : Activity() {
             putStringArrayListExtra(ConversionService.EXTRA_URIS, ArrayList(convertibleItems.map { it.uri.toString() }))
             putStringArrayListExtra(ConversionService.EXTRA_DATES, ArrayList(convertibleItems.map { it.datetime.orEmpty() }))
             putExtra(ConversionService.EXTRA_OPTIONS, options)
+            val first = convertibleItems.first().uri
+            clipData = android.content.ClipData.newUri(contentResolver, "Raw2DNG inputs", first).also { clip ->
+                convertibleItems.drop(1).forEach { item -> clip.addItem(android.content.ClipData.Item(item.uri)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         running = true
         queue.forEach { if (it.error == null) it.status = "Queued" }

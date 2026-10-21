@@ -16,7 +16,8 @@ val selectedRustAbis = providers.gradleProperty("rust.abis")
     .map(String::trim)
     .filter(String::isNotEmpty)
     .also { requested -> require(requested.all(rustAbis::containsKey)) { "Unsupported Rust ABI in rust.abis=$requested" } }
-val generatedJni = layout.buildDirectory.dir("generated/rustJniLibs/main")
+val generatedDebugJni = layout.buildDirectory.dir("generated/rustJniLibs/debug")
+val generatedReleaseJni = layout.buildDirectory.dir("generated/rustJniLibs/release")
 val rustInputs = files(fileTree("../native/src"), rootProject.file("native/Cargo.toml"), rootProject.file("native/Cargo.lock"))
 val rustAbiSetting = providers.gradleProperty("rust.abis").orElse("arm64-v8a,armeabi-v7a,x86_64")
 val releaseStoreFile = providers.gradleProperty("release.storeFile")
@@ -40,15 +41,18 @@ val prepareRustJniLibs = tasks.register("prepareRustJniLibs") {
     inputs.property("rust.abis", rustAbiSetting)
     outputs.file(readyMarker)
     doLast {
-        generatedJni.get().asFile.deleteRecursively()
-        generatedJni.get().asFile.mkdirs()
+        generatedDebugJni.get().asFile.deleteRecursively()
+        generatedReleaseJni.get().asFile.deleteRecursively()
+        generatedDebugJni.get().asFile.mkdirs()
+        generatedReleaseJni.get().asFile.mkdirs()
         readyMarker.get().asFile.apply { parentFile.mkdirs(); writeText("${selectedRustAbis.joinToString()}\n") }
     }
 }
 
 val rustBuildTasks = selectedRustAbis.map { abi ->
     val (triple, clangTriple, ccTarget) = rustAbis.getValue(abi)
-    val output = generatedJni.get().file("$abi/libraw2dng.so")
+    val debugOutput = generatedDebugJni.get().file("$abi/libraw2dng.so")
+    val releaseOutput = generatedReleaseJni.get().file("$abi/libraw2dng.so")
     tasks.register<Exec>("buildRust${abi.split('-', '_').joinToString("") { part -> part.replaceFirstChar(Char::uppercase) }}") {
         group = "build"
         description = "Builds raw2dng for $abi."
@@ -56,7 +60,8 @@ val rustBuildTasks = selectedRustAbis.map { abi ->
         inputs.files(rustInputs)
         inputs.property("target", triple)
         inputs.property("ndkVersion", ndkVersionForRust)
-        outputs.file(output)
+        outputs.file(debugOutput)
+        if (abi != "x86_64") outputs.file(releaseOutput)
         workingDir(rootProject.projectDir)
         val ndk = sdkPath.get() + "/ndk/$ndkVersionForRust"
         val prebuilt = "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -72,7 +77,10 @@ val rustBuildTasks = selectedRustAbis.map { abi ->
         doLast {
             val nativeLibrary = rootProject.file("native/target/$triple/release/libraw2dng.so")
             require(nativeLibrary.isFile) { "Rust build did not produce $nativeLibrary" }
-            output.asFile.apply { parentFile.mkdirs(); nativeLibrary.copyTo(this, overwrite = true) }
+            debugOutput.asFile.apply { parentFile.mkdirs(); nativeLibrary.copyTo(this, overwrite = true) }
+            if (abi != "x86_64") {
+                releaseOutput.asFile.apply { parentFile.mkdirs(); nativeLibrary.copyTo(this, overwrite = true) }
+            }
         }
     }
 }
@@ -83,7 +91,8 @@ val buildRustNative = tasks.register("buildRustNative") {
     inputs.files(rustInputs)
     inputs.property("rust.abis", rustAbiSetting)
     inputs.property("ndkVersion", ndkVersionForRust)
-    outputs.dir(generatedJni)
+    outputs.dir(generatedDebugJni)
+    outputs.dir(generatedReleaseJni)
     dependsOn(rustBuildTasks)
 }
 
@@ -118,7 +127,8 @@ android {
         }
     }
 
-    sourceSets.getByName("main").jniLibs.directories.add(generatedJni.get().asFile.absolutePath)
+    sourceSets.getByName("debug").jniLibs.directories.add(generatedDebugJni.get().asFile.absolutePath)
+    sourceSets.getByName("release").jniLibs.directories.add(generatedReleaseJni.get().asFile.absolutePath)
 
     buildTypes {
         debug { isMinifyEnabled = false }
