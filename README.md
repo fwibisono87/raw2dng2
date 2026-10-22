@@ -36,7 +36,7 @@ If your camera isn't on the list, the app will tell you it can't read the file r
 ## A few things worth knowing
 
 - Files are converted one at a time, about a second each for a DNG on a recent phone.
-- Developing a full-size JPEG from RAW needs a lot of memory (close to 1 GB for a 26 MP photo). On older phones, use the camera JPEG or pick a smaller size.
+- Full-size JPEG development uses less memory for standard RGB Bayer RAW files, which are processed in row bands. Other sensor layouts still need more memory, so on older phones use the camera JPEG or pick a smaller size.
 - "Embed original RAW file" stores the whole original inside the DNG, so you can get it back later. It roughly doubles the file size, so it's off by default.
 
 <p align="center">
