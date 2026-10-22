@@ -1,0 +1,11 @@
+Convert camera RAW photos to DNG or JPEG directly on your Android device.
+
+<ul>
+  <li>Pick files in the app or share them from another app.</li>
+  <li>Convert several files in a queue.</li>
+  <li>Save as DNG, with an option to embed the original RAW file.</li>
+  <li>Create JPEGs from the camera JPEG preview or develop from RAW; choose a maximum image size and an optional file-size limit.</li>
+  <li>Save to Pictures/Raw2DNG or a folder you choose.</li>
+</ul>
+
+Conversion happens on your device. Raw2DNG does not request Internet permission. Android 5.0 or newer.
