@@ -1,0 +1,1 @@
+First release. Convert camera RAW photos to DNG or JPEG, queue multiple files, and choose between the embedded camera JPEG and developing from RAW.

@@ -69,6 +69,8 @@ Gradle builds the Rust library for `arm64-v8a`, `armeabi-v7a` and `x86_64`. Add 
 
 Release builds are signed with a local debug key unless you pass `release.storeFile`, `release.storePassword`, `release.keyAlias` and `release.keyPassword` as Gradle properties.
 
+For the current F-Droid metadata and source-build notes, see [docs/f-droid.md](docs/f-droid.md).
+
 The Rust side can be tested on its own:
 
 ```sh
