@@ -100,9 +100,55 @@ fn portrait_sample_is_rotated() {
     let image = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
         .expect("decode preview JPEG");
     assert!(image.height() > image.width());
+    assert_eq!(image.width().max(image.height()), 256);
+
+    let source = RawSource::new_from_slice(&bytes);
+    let decoder = rawler::get_decoder(&source).expect("parse portrait sample for reference");
+    let legacy = decoder
+        .preview_image(&source, &RawDecodeParams::default())
+        .expect("decode legacy full-size camera JPEG")
+        .expect("legacy camera JPEG");
+    let legacy = orient_reference(legacy, probe.orientation);
+    let expected = legacy
+        .resize_exact(
+            image.width(),
+            image.height(),
+            image::imageops::FilterType::Triangle,
+        )
+        .to_rgb8();
+    let actual = image.to_rgb8();
+    let mean_absolute_error = actual
+        .pixels()
+        .zip(expected.pixels())
+        .flat_map(|(actual, expected)| {
+            actual
+                .0
+                .into_iter()
+                .zip(expected.0)
+                .map(|(actual, expected)| u64::from(actual.abs_diff(expected)))
+        })
+        .sum::<u64>() as f64
+        / (actual.width() as f64 * actual.height() as f64 * 3.0);
+    assert!(
+        mean_absolute_error <= 10.0,
+        "scaled preview differs from legacy image by mean absolute error {mean_absolute_error:.2}"
+    );
 
     let output = to_jpeg_bytes(bytes, JpegSource::Auto, 256, 0, 92).expect("convert portrait JPEG");
     assert!(output.info.height > output.info.width);
+}
+
+fn orient_reference(image: image::DynamicImage, orientation: u16) -> image::DynamicImage {
+    match orientation {
+        2 => image.fliph(),
+        3 => image.rotate180(),
+        4 => image.flipv(),
+        5 => image.rotate90().fliph(),
+        6 => image.rotate90(),
+        7 => image.rotate90().flipv(),
+        8 => image.rotate270(),
+        _ => image,
+    }
 }
 
 #[test]

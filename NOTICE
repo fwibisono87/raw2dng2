@@ -3,5 +3,11 @@ project. rawler is distributed under the GNU Lesser General Public License,
 version 2.1 (LGPL-2.1). The library source and license are available from
 https://github.com/dnglab/dnglab .
 
+Raw2DNG uses jpeg-decoder Rust crate, version 0.3.2, by The jpeg-decoder
+Developers. jpeg-decoder is distributed under the MIT License or Apache
+License, Version 2.0. The included MIT license text is in
+licenses/jpeg-decoder-MIT.txt; the crate source and both license texts are
+available at https://github.com/image-rs/jpeg-decoder .
+
 The Android application code in this repository is distributed under the MIT
 License; see LICENSE.
