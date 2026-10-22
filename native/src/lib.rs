@@ -22,6 +22,8 @@ use rawler::rawimage::{
 };
 use rawler::rawsource::RawSource;
 
+mod jpeg_memory;
+
 const SOFTWARE: &str = "Raw2DNG 0.1.0";
 
 #[derive(Debug, Clone)]
@@ -517,6 +519,8 @@ fn develop_raw(mut raw: RawImage, long_edge: u32) -> Result<DynamicImage, String
     let binned = should_bin_bayer(&raw, long_edge);
     if binned {
         bin_bayer(&mut raw, long_edge)?;
+    } else if jpeg_memory::supports_banded_development(&raw) {
+        return jpeg_memory::develop_bayer_in_bands(raw);
     }
     let developer = if binned {
         RawDevelop::new_with(&[
