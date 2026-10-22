@@ -379,16 +379,10 @@ class MainActivity : Activity() {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun handleIncomingIntent(incoming: Intent?) {
         if (incoming == null) return
         val uris = when (incoming.action) {
-            Intent.ACTION_SEND -> listOfNotNull(incoming.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri, incoming.data)
-            Intent.ACTION_SEND_MULTIPLE -> {
-                val streams = incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
-                (streams + urisFromClip(incoming) + listOfNotNull(incoming.data)).distinct()
-            }
-            Intent.ACTION_VIEW -> listOfNotNull(incoming.data)
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_VIEW -> urisFromIntent(incoming)
             else -> emptyList()
         }
         if (uris.isNotEmpty()) {
@@ -397,18 +391,17 @@ class MainActivity : Activity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun urisFromIntent(data: Intent): List<Uri> = buildList {
         data.data?.let(::add)
+        when (data.action) {
+            Intent.ACTION_SEND -> (data.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.let(::add)
+            Intent.ACTION_SEND_MULTIPLE -> addAll(data.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty())
+        }
         data.clipData?.let { clip ->
             for (index in 0 until clip.itemCount) clip.getItemAt(index).uri?.let(::add)
         }
     }.distinct()
-
-    private fun urisFromClip(data: Intent): List<Uri> = buildList {
-        data.clipData?.let { clip ->
-            for (index in 0 until clip.itemCount) clip.getItemAt(index).uri?.let(::add)
-        }
-    }
 
     private fun persistIntentPermissions(data: Intent) {
         val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
