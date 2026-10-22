@@ -4,12 +4,16 @@ use std::os::fd::FromRawFd;
 use std::sync::Arc;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, ImageBuffer, ImageEncoder, imageops::FilterType};
+use image::{DynamicImage, ImageBuffer, ImageEncoder, Luma, Rgb, imageops::FilterType};
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jstring};
-use rawler::decoders::{Decoder, Orientation, RawDecodeParams, RawMetadata};
+use jpeg_decoder::{
+    CodingProcess as JpegCodingProcess, Decoder as JpegDecoder, PixelFormat as JpegPixelFormat,
+};
+use rawler::decoders::{Decoder, FormatHint, Orientation, RawDecodeParams, RawMetadata};
 use rawler::dng::convert::{ConvertParams, convert_raw_source};
+use rawler::formats::tiff::IFD;
 use rawler::formats::tiff::Rational;
 use rawler::imgop::develop::{Intermediate, ProcessingStep, RawDevelop};
 use rawler::imgop::sensor::Demosaic;
@@ -21,6 +25,7 @@ use rawler::rawimage::{
     BlackLevel, RawImage, RawImageData, RawPhotometricInterpretation, WhiteLevel,
 };
 use rawler::rawsource::RawSource;
+use rawler::tags::TiffCommonTag;
 
 const SOFTWARE: &str = "Raw2DNG 0.1.0";
 
@@ -312,7 +317,13 @@ pub fn probe_bytes(bytes: Vec<u8>) -> Result<Probe, String> {
 
 pub fn preview_bytes(bytes: Vec<u8>, max_edge: u32) -> Result<Option<Vec<u8>>, String> {
     let context = open_raw(bytes)?;
-    let Some(image) = select_embedded(&context, max_edge.max(1)) else {
+    let image = if max_edge > 0 {
+        decode_scaled_cr2_preview(&context, max_edge)
+    } else {
+        None
+    }
+    .or_else(|| select_embedded(&context, max_edge.max(1)));
+    let Some(image) = image else {
         return Ok(None);
     };
     let orientation = context.orientation_with_dummy_fallback()?;
@@ -320,6 +331,124 @@ pub fn preview_bytes(bytes: Vec<u8>, max_edge: u32) -> Result<Option<Vec<u8>>, S
     let mut image = orient(image, orientation);
     image = resize_long_edge(image, max_edge, FilterType::Triangle);
     encode_jpeg(&image, 82).map(Some)
+}
+
+const MAX_SCALED_JPEG_SAMPLES: usize = 16 * 1024 * 1024;
+const MAX_CR2_JPEG_BYTES: usize = 32 * 1024 * 1024;
+const MAX_CR2_JPEG_PIXELS: u64 = 100_000_000;
+
+fn decode_scaled_cr2_preview(context: &RawContext, max_edge: u32) -> Option<DynamicImage> {
+    if context.decoder.format_hint() != FormatHint::CR2 {
+        return None;
+    }
+
+    // Canon CR2 files commonly store a 6240x4160 camera JPEG in IFD0. Read its
+    // strip through rawler's TIFF parser, then let jpeg-decoder use its scaled
+    // IDCT so we never allocate a full-resolution RGB image for a thumbnail.
+    let mut tiff_reader = context.source.reader();
+    let root = IFD::new_root_with_correction(&mut tiff_reader, 0, 0, 0, 1, &[]).ok()?;
+    if root
+        .get_entry(TiffCommonTag::Compression)?
+        .value
+        .get_u16(0)
+        .ok()
+        .flatten()?
+        != 6
+    {
+        return None;
+    }
+
+    let strip_offsets = root.get_entry(TiffCommonTag::StripOffsets)?;
+    let strip_byte_counts = root.get_entry(TiffCommonTag::StripByteCounts)?;
+    if strip_offsets.count() != 1 || strip_byte_counts.count() != 1 {
+        return None;
+    }
+    let jpeg_offset = strip_offsets.value.get_usize(0).ok().flatten()?;
+    let jpeg_length = strip_byte_counts.value.get_usize(0).ok().flatten()?;
+    if jpeg_length == 0 || jpeg_length > MAX_CR2_JPEG_BYTES {
+        return None;
+    }
+    let jpeg_end = jpeg_offset.checked_add(jpeg_length)?;
+    let jpeg = context.source.buf().get(jpeg_offset..jpeg_end)?;
+    let (width, height) = jpeg_sof_dimensions(jpeg, 0)?;
+    let tiff_width = u32::try_from(
+        root.get_entry(TiffCommonTag::ImageWidth)?
+            .value
+            .get_usize(0)
+            .ok()
+            .flatten()?,
+    )
+    .ok()?;
+    let tiff_height = u32::try_from(
+        root.get_entry(TiffCommonTag::ImageLength)?
+            .value
+            .get_usize(0)
+            .ok()
+            .flatten()?,
+    )
+    .ok()?;
+    if width != tiff_width || height != tiff_height {
+        return None;
+    }
+    if width.max(height) < max_edge {
+        return None;
+    }
+    if u64::from(width) * u64::from(height) > MAX_CR2_JPEG_PIXELS {
+        // Bound work for unusually large JPEGs before asking the decoder to parse them.
+        return None;
+    }
+
+    decode_scaled_jpeg(jpeg, max_edge)
+}
+
+fn decode_scaled_jpeg(jpeg: &[u8], max_edge: u32) -> Option<DynamicImage> {
+    let (width, height) = jpeg_sof_dimensions(jpeg, 0)?;
+    if u64::from(width) * u64::from(height) > MAX_CR2_JPEG_PIXELS {
+        return None;
+    }
+
+    let requested = max_edge.min(u32::from(u16::MAX)) as u16;
+    let mut decoder = JpegDecoder::new(Cursor::new(jpeg));
+    decoder.set_max_decoding_buffer_size(MAX_SCALED_JPEG_SAMPLES);
+    let (scaled_width, scaled_height) = decoder.scale(requested, requested).ok()?;
+    let info = decoder.info()?;
+    // Only sequential DCT stays within the output-buffer bound. Progressive
+    // JPEGs retain coefficient planes, and lossless JPEGs build full planes.
+    if info.coding_process != JpegCodingProcess::DctSequential {
+        return None;
+    }
+    if !matches!(info.pixel_format, JpegPixelFormat::RGB24 | JpegPixelFormat::L8) {
+        return None;
+    }
+    let samples = usize::from(scaled_width)
+        .checked_mul(usize::from(scaled_height))?
+        .checked_mul(info.pixel_format.pixel_bytes())?;
+    if info.width != scaled_width
+        || info.height != scaled_height
+        || samples > MAX_SCALED_JPEG_SAMPLES
+    {
+        return None;
+    }
+    let pixels = decoder.decode().ok()?;
+    if pixels.len() != samples {
+        return None;
+    }
+
+    match info.pixel_format {
+        JpegPixelFormat::RGB24 => ImageBuffer::<Rgb<u8>, Vec<u8>>::from_raw(
+            u32::from(scaled_width),
+            u32::from(scaled_height),
+            pixels,
+        )
+        .map(DynamicImage::ImageRgb8),
+        JpegPixelFormat::L8 => ImageBuffer::<Luma<u8>, Vec<u8>>::from_raw(
+            u32::from(scaled_width),
+            u32::from(scaled_height),
+            pixels,
+        )
+        .map(DynamicImage::ImageLuma8),
+        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => None,
+    }
 }
 
 pub fn to_dng_bytes(
@@ -1032,4 +1161,59 @@ pub extern "system" fn Java_com_raw2dng_Native_toJpeg(
         java_string(&mut env, &json)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ImageBuffer, ImageEncoder, JpegEncoder, Rgb, decode_scaled_jpeg};
+    use image::GenericImageView;
+
+    #[test]
+    fn scaled_jpeg_decode_limits_output_to_thumbnail_scale() {
+        let source = ImageBuffer::from_fn(2048, 1024, |_, _| Rgb([120, 80, 40]));
+        let mut jpeg = Vec::new();
+        JpegEncoder::new_with_quality(&mut jpeg, 90)
+            .write_image(
+                source.as_raw(),
+                source.width(),
+                source.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .expect("encode test JPEG");
+
+        let scaled = decode_scaled_jpeg(&jpeg, 256).expect("scaled JPEG decode");
+        assert_eq!(scaled.dimensions(), (256, 128));
+        let pixel = scaled.to_rgb8().get_pixel(128, 64).0;
+        for (actual, expected) in pixel.into_iter().zip([120, 80, 40]) {
+            assert!(actual.abs_diff(expected) <= 5, "pixel={pixel:?}");
+        }
+    }
+
+    #[test]
+    fn scaled_jpeg_decode_rejects_malformed_input() {
+        assert!(decode_scaled_jpeg(&[0xff, 0xd8, 0xff, 0xd9], 256).is_none());
+    }
+
+    #[test]
+    fn canon_portrait_uses_scaled_cr2_preview_when_available() {
+        let Some(path) = std::env::var_os("RAW2DNG_PORTRAIT_SAMPLE") else {
+            eprintln!("RAW2DNG_PORTRAIT_SAMPLE is not set; skipping Canon fast-path coverage");
+            return;
+        };
+        let context = super::open_raw(std::fs::read(path).expect("read portrait sample"))
+            .expect("open portrait sample");
+        assert!(super::decode_scaled_cr2_preview(&context, 256).is_some());
+        assert!(super::decode_scaled_cr2_preview(&context, 7000).is_none());
+    }
+
+    #[test]
+    fn progressive_jpeg_is_rejected_before_coefficient_decode() {
+        let jpeg = [
+            0xff, 0xd8, // SOI
+            0xff, 0xc2, 0x00, 0x11, // Progressive SOF, 17-byte marker
+            0x08, 0x0f, 0xa0, 0x4e, 0x20, 0x03, // 20000x4000, 3 components
+            0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+        ];
+        assert!(decode_scaled_jpeg(&jpeg, 256).is_none());
+    }
 }
