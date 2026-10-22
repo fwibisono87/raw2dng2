@@ -109,8 +109,10 @@ android {
 
     defaultConfig {
         applicationId = "com.franciswibisono.raw2dng2"
+        testApplicationId = "com.franciswibisono.raw2dng2.test"
         minSdk = 21
         targetSdk = 36
+        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
         versionCode = appVersionCode
         versionName = appVersionName
         resValue("string", "release_codename", release.getProperty("codename"))
@@ -152,6 +154,13 @@ android {
     }
 
     packaging { jniLibs { useLegacyPackaging = false } }
+}
+
+dependencies {
+    androidTestCompileOnly(files(
+        "${sdkPath.get()}/platforms/android-36/optional/android.test.base.jar",
+        "${sdkPath.get()}/platforms/android-36/optional/android.test.runner.jar"
+    ))
 }
 
 tasks.named("preBuild").configure { dependsOn(buildRustNative) }
